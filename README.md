@@ -18,5 +18,7 @@ Supports:
 * Read Busy Flag and Address Counter
 * Write Data to RAM
 * Read Data from RAM
+* Terminate
+* Backlight - toggle on or off, via PCF8574 pin
 
 More to come...
