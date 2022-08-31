@@ -1,5 +1,7 @@
 # PCF8547_LCD2004 (for Arduino)
-Bare minimum Arduino code for LCD2004 (LCD1602 with changes, etc.) and PCF8547 I2C interface chip. For when size matters.
+This version intends to have full support of all LCD2004/LCD1602 features, but still has some cleanup to do.
+
+Rest:
 
 I was writing code for a PIC24 processor using the CCS IDE, and used an Arduino to figure out how to talk to this LCD and I2C controller. I thought I'd share the Arduino code in case anyone else is needing to do the same thing.
 
