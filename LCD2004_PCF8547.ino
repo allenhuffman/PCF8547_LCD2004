@@ -1,3 +1,26 @@
+/*---------------------------------------------------------------------------*/
+/*
+  LCD2004/LCD1602 via PCF8574 I2C Interface
+  By Allen C. Huffman
+  www.subethasoftware.com
+
+  Code to do most all of the functions of the LCD2004 via the PCF8574 I2C
+  interface board. (It can easily be modified to work with LCD1602 and any
+  other size display that uses the same interface.)
+
+  REFERENCES:
+  
+  CONFIGURATION:
+  
+  VERSION HISTORY:
+  2022-08-31 0.0 allenh - In the beginning...
+  
+  TODO:
+  
+  TOFIX:
+
+*/
+/*---------------------------------------------------------------------------*/
 #ifndef LCD2004_PCF8547_C
 #define LCD2004_PCF8547_C
 
@@ -12,7 +35,7 @@
 
 
 /*--------------------------------------------------------------------------*/
-// Static Variables
+// STATIC GLOBALS
 /*--------------------------------------------------------------------------*/
 static bool     S_IsLCDEnabled = false;
 static uint8_t  S_DisplayControlBits = 0;
@@ -20,7 +43,7 @@ static uint8_t  S_BacklightBit = 0;
 
 
 /*--------------------------------------------------------------------------*/
-// Constants
+// CONSTANTS
 /*--------------------------------------------------------------------------*/
 const uint8_t defaultCGRAMData[] =
 {
@@ -107,7 +130,11 @@ const uint8_t defaultCGRAMData[] =
 
 
 /*--------------------------------------------------------------------------*/
-// Functions
+// FUNCTIONS
+/*--------------------------------------------------------------------------*/
+
+/*--------------------------------------------------------------------------*/
+// Return status of LCD (true=enabled, false=not enabled)
 /*--------------------------------------------------------------------------*/
 bool IsLCDEnabled(void)
 {
@@ -178,22 +205,16 @@ bool LCDInit(void)
 
     // Default settings:
 
-    // Erase any character data.
-    // LCDSetCGRAMAddress (0);
-    // for (int idx=0; idx<64; idx++)
-    // {
-    //     LCDWriteDataByte (0);
-    // }
-
     LCDClear ();
     LCDSetDisplay (true);
     LCDSetBacklight (true);
 
+    // Load 8 custom characters and display Splash Screen.
     LCDSetCGRAMAddress (0);
     LCDWriteDataCGRAM (defaultCGRAMData, sizeof(defaultCGRAMData));
     LCDSetXY (6, 1);
     LCDWriteData ("\0\1\2\3\4\5\6\7", 8);
-    LCDWriteDataXYString (6, 2, "Software");
+    LCDWriteDataStringXY (6, 2, "Software");
     delay (2000);
 
     return true;
@@ -310,7 +331,7 @@ void LCDWriteDataString(char *message)
 /*--------------------------------------------------------------------------*/
 // Write out a NIL terminated C string.
 /*--------------------------------------------------------------------------*/
-void LCDWriteDataXYString(uint8_t x, uint8_t y, char *message)
+void LCDWriteDataStringXY(uint8_t x, uint8_t y, char *message)
 {
     LCDSetXY(x, y);
     LCDWriteDataString(message);
@@ -409,7 +430,8 @@ void LCDSetXY(uint8_t x, uint8_t y)
 /*--------------------------------------------------------------------------*/
 void LCDClear(void)
 {
-    if (S_IsLCDEnabled == true)
+    // Avoid sending I2C data if no LCD is enabled.
+    //if (S_IsLCDEnabled == true)
     {
         // Clear Display
         // [ 0  0  0  0  0  0  0  1 ]
@@ -425,7 +447,8 @@ void LCDClear(void)
 /*--------------------------------------------------------------------------*/
 void LCDHome(void)
 {
-    if (S_IsLCDEnabled == true)
+    // Avoid sending I2C data if no LCD is enabled.
+    //if (S_IsLCDEnabled == true)
     {
         // Return Home
         // [ 0  0  0  0  0  0  1  0 ]
@@ -676,36 +699,36 @@ uint8_t LCDReadAddressCounter (void)
 // This one is simpler since our BF bit is in the high nibble so we do not
 // need to do two reads to retrieve the full 8-bits.
 /*--------------------------------------------------------------------------*/
-void LCDWaitForBusyFlag (void)
+void LCDWaitForBusyFlag(void)
 {
-  Wire.beginTransmission (PCF8574_ADDRESS);
-  Wire.write (RW_BIT | S_BacklightBit | DB7_BIT | DB6_BIT | DB5_BIT | DB4_BIT);
-  Wire.endTransmission ();
-  delayMicroseconds (1);
+    Wire.beginTransmission(PCF8574_ADDRESS);
+    Wire.write(S_BacklightBit | RW_BIT | DB7_BIT | DB6_BIT | DB5_BIT | DB4_BIT);
+    Wire.endTransmission();
+    delayMicroseconds(1);
 
-  // Enable, Read, Backlight On, Pins as Input
-  Wire.beginTransmission (PCF8574_ADDRESS);
-  Wire.write (E_BIT | RW_BIT | S_BacklightBit | DB7_BIT | DB6_BIT | DB5_BIT | DB4_BIT);
-  Wire.endTransmission ();
-  delayMicroseconds (1);
+    // Enable, Read, Backlight On, Pins as Input
+    Wire.beginTransmission(PCF8574_ADDRESS);
+    Wire.write(E_BIT | S_BacklightBit | RW_BIT | DB7_BIT | DB6_BIT | DB5_BIT | DB4_BIT);
+    Wire.endTransmission();
+    delayMicroseconds(1);
 
     // TODO: Timeout to avoid a deadlock due to I2C issues.
-  while (1)
-  {
-    // Read I/O pins.
-    Wire.requestFrom (PCF8574_ADDRESS, 1);
-    if ((Wire.read() & DB7_BIT) == 0)
+    uint16_t timeout = 65535;
+    while (timeout-- != 0)
     {
-      break;
-    }
-  };
+        // Read I/O pins.
+        Wire.requestFrom(PCF8574_ADDRESS, 1);
+        if ((Wire.read() & DB7_BIT) == 0)
+        {
+            break;
+        }
+    };
 
-  // Disable, leaving Backlight on.
-  Wire.beginTransmission (PCF8574_ADDRESS);
-  Wire.write (S_BacklightBit);
-  Wire.endTransmission ();
+    // Disable, leaving Backlight on.
+    Wire.beginTransmission(PCF8574_ADDRESS);
+    Wire.write(S_BacklightBit);
+    Wire.endTransmission();
 }
-
 
 /*--------------------------------------------------------------------------*/
 // Clear the LCD (and home the cursor position).
@@ -823,4 +846,5 @@ void LCDSetBacklightOff(void)
 
 #endif /* LCD2004_PCF8547_C */
 
+/*---------------------------------------------------------------------------*/
 // End of LCD2004_PCF8547.c

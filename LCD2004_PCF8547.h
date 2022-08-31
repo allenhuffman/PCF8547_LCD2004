@@ -1,18 +1,46 @@
+/*---------------------------------------------------------------------------*/
+/*
+  LCD2004/LCD1602 via PCF8574 I2C Interface
+  By Allen C. Huffman
+  www.subethasoftware.com
+
+  Code to do most all of the functions of the LCD2004 via the PCF8574 I2C
+  interface board. (It can easily be modified to work with LCD1602 and any
+  other size display that uses the same interface.)
+
+  REFERENCES:
+  
+  CONFIGURATION:
+  
+  VERSION HISTORY:
+  2022-08-31 0.0 allenh - In the beginning...
+  
+  TODO:
+  
+  TOFIX:
+
+*/
+/*---------------------------------------------------------------------------*/
 #ifndef LCD2004_PCF8547_H
 #define LCD2004_PCF8547_H
 
 /*--------------------------------------------------------------------------*/
-// Include Files
+// INCLUDE FILES
 /*--------------------------------------------------------------------------*/
 #include <stdint.h>
 
 
+/*--------------------------------------------------------------------------*/
+// EXTERNS (only used for one test)
+/*--------------------------------------------------------------------------*/
 extern const uint8_t defaultCGRAMData[64];
 
+
 /*--------------------------------------------------------------------------*/
-// Constants
+// CONSTANTS / DEFINES / ENUMS
 /*--------------------------------------------------------------------------*/
 #define PCF8574_ADDRESS   0x27 // 39 (7-bit address)
+// For PIC24/CCS:
 //#define PCF8574_ADDRESS   (0x27*2) // 39 (8-bit address)
 
 #if !defined(BIT)
@@ -103,12 +131,15 @@ typedef enum
 
 
 /*--------------------------------------------------------------------------*/
-// Prototypes
+// PROTOTYPES
 /*--------------------------------------------------------------------------*/
-bool IsLCDEnabled (void);
 
+// Initialization
+bool IsLCDEnabled (void);
 bool LCDInit (void);
 void LCDTerm (void);
+
+// Write
 
 void LCDWriteInstructionNibble (uint8_t nibble);
 
@@ -118,14 +149,14 @@ void LCDWriteDataByte (uint8_t data);
 
 void LCDWriteData (uint8_t *dataPtr, uint8_t dataSize);
 void LCDWriteDataString (char *message);
-void LCDWriteDataXYString (uint8_t x, uint8_t y, char *message);
+void LCDWriteDataStringXY (uint8_t x, uint8_t y, char *message);
 
 void LCDWriteDataCGRAM (uint8_t *dataPtr, uint8_t dataSize);
 void LCDWriteDataCGRAMCharacter (uint8_t characterNumber, uint8_t *dataPtr, uint8_t dataSize);
 
-void LCDSetXY (uint8_t x, uint8_t y);
+void LCDSetXY (uint8_t x, uint8_t y); // Set DDRAM Address
 
-// LCD COMMANDS/INSTRUCTIONS
+// Commands/Instructions
 void LCDClear (void);
 void LCDHome (void);
 void LCDEntryModeSet (uint8_t entryModeBits);
@@ -135,18 +166,19 @@ void LCDFunctionSet (uint8_t functionSetBits);
 void LCDSetCGRAMAddress (uint8_t cgramAddress);
 void LCDSetDDRAMAddress (uint8_t ddramAddress);
 
-// READ
+// Read
 uint8_t LCDReadByte(LCDBitEnum rsBit);
 uint8_t LCDReadDataByte (void);
+
 void LCDReadData (uint8_t *bufferPtr, uint8_t bufferSize);
 
 void LCDReadDataDDRAM (uint8_t DDRAMAddress, uint8_t *bufferPtr, uint8_t bufferSize);
 void LCDReadDataCGRAM (uint8_t *bufferPtr, uint8_t bufferSize);
 void LCDReadDataCGRAMCharacter (uint8_t characterNumber, uint8_t *bufferPtr, uint8_t bufferSize);
 
+// Busy Flag/Address Counter
 uint8_t LCDReadBusyFlagAndAddressCounter (void);
 uint8_t LCDReadAddressCounter (void);
-
 void LCDWaitForBusyFlag (void);
 
 // Convienience functions:
@@ -175,4 +207,5 @@ void LCDSetBacklightOff(void);
 
 #endif   /* LCD2004_PCF8547_H */
 
+/*---------------------------------------------------------------------------*/
 // End of LCD2004_PCF8547.h
