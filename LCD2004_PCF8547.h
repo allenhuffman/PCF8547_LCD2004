@@ -14,6 +14,7 @@
   
   VERSION HISTORY:
   2022-08-31 0.0 allenh - In the beginning...
+  2022-12-07 0.1 allenh - Initial support for 4-bit GPIO mode.
   
   TODO:
   
@@ -23,6 +24,7 @@
 /*---------------------------------------------------------------------------*/
 #ifndef LCD2004_PCF8547_H
 #define LCD2004_PCF8547_H
+
 
 /*--------------------------------------------------------------------------*/
 // INCLUDE FILES
@@ -42,6 +44,15 @@ extern const uint8_t defaultCGRAMData[64];
 #define PCF8574_ADDRESS   0x27 // 39 (7-bit address)
 // For PIC24/CCS:
 //#define PCF8574_ADDRESS   (0x27*2) // 39 (8-bit address)
+
+#if !defined(PCF8574_ADDRESS)
+  #define PIN_D7 7
+  #define PIN_D6 8
+  #define PIN_D5 9
+  #define PIN_D4 10
+  #define PIN_E  11
+  #define PIN_RS 12 
+#endif
 
 #if !defined(BIT)
 #define BIT(b)      (1<<(b))
