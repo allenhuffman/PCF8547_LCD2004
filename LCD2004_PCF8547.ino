@@ -1,8 +1,12 @@
 /*---------------------------------------------------------------------------*/
 /*
-  Test program for LCD2004/LCD1602 via PCF8574 I2C Interface
+  LCD2004/LCD1602 via PCF8574 I2C Interface
   By Allen C. Huffman
   www.subethasoftware.com
+
+  Code to do most all of the functions of the LCD2004 via the PCF8574 I2C
+  interface board. (It can easily be modified to work with LCD1602 and any
+  other size display that uses the same interface.)
 
   REFERENCES:
   
@@ -10,7 +14,8 @@
   
   VERSION HISTORY:
   2022-08-31 0.0 allenh - In the beginning...
-  2022-12-07 0.1 allenh - Initial support for 4-bit GPIO mode.
+  2022-09-06 0.1 allenh - Updated Sub-Etha font ;-)
+  2022-12-07 0.2 allenh - Initial support for 4-bit GPIO mode.
   
   TODO:
   
@@ -18,422 +23,916 @@
 
 */
 /*---------------------------------------------------------------------------*/
-// TI PCF8574 (or compatible)
+#ifndef LCD2004_PCF8547_C
+#define LCD2004_PCF8547_C
 
+
+/*--------------------------------------------------------------------------*/
+// Include Files
+/*--------------------------------------------------------------------------*/
 #include <stdint.h>
 
 #include <Wire.h>
 
 #include "LCD2004_PCF8547.h"
 
-#define LCD_WIDTH   20
-#define LCD_HEIGHT  4
 
-const uint8_t pacmanGGRAMData[] =
+/*--------------------------------------------------------------------------*/
+// STATIC GLOBALS
+/*--------------------------------------------------------------------------*/
+static bool     S_IsLCDEnabled = false;
+static uint8_t  S_DisplayControlBits = 0;
+static uint8_t  S_BacklightBit = 0;
+
+
+/*--------------------------------------------------------------------------*/
+// CONSTANTS
+/*--------------------------------------------------------------------------*/
+const uint8_t defaultCGRAMData[] =
 {
-  // Pac Close
-  0b01110,
-  0b11111,
-  0b11111,
-  0b11111,
-  0b11111,
-  0b11111,
-  0b11111,
-  0b01110,
-
-  // Pack Right
-  0b01110,
-  0b11111,
-  0b11110,
-  0b11100,
-  0b11100,
-  0b11110,
-  0b11111,
-  0b01110,
-
-  // Ghost 1
-  0b01110,
-  0b11111,
-  0b11111,
-  0b10101,
-  0b11111,
-  0b11111,
-  0b11111,
-  0b10101,
-
-  // Ghost 2
-  0b01110,
-  0b11111,
-  0b11111,
-  0b10101,
-  0b11111,
-  0b11111,
-  0b11111,
-  0b01010,
-
-  // Dot
-  0b00000,
-  0b00000,
-  0b00000,
-  0b01100,
-  0b01100,
-  0b00000,
-  0b00000,
-  0b00000,
-
-  // Maze Left
-  0b00000,
+    // S
   0b01111,
-  0b10000,
-  0b10000,
-  0b10000,
-  0b10000,
+  0b11111,
+  0b11000,
+  0b11110,
   0b01111,
+  0b00011,
+  0b11111,
+  0b11110,
+
+  // U
+  0b11011,
+  0b11011,
+  0b11011,
+  0b11011,
+  0b11011,
+  0b11011,
+  0b11111,
+  0b01110,
+
+  // B
+  0b11110,
+  0b11111,
+  0b11011,
+  0b11110,
+  0b11111,
+  0b11011,
+  0b11111,
+  0b11110,
+
+  // -
+  0b00000,
+  0b00000,
+  0b00000,
+  0b01110,
+  0b01110,
+  0b00000,
+  0b00000,
   0b00000,
 
-  // Maze Center
-  0b00000,
+  // E
   0b11111,
-  0b00000,
-  0b00000,
-  0b00000,
-  0b00000,
   0b11111,
-  0b00000,
+  0b11000,
+  0b11111,
+  0b11111,
+  0b11000,
+  0b11111,
+  0b11111,
 
-  // Maze Right
-  0b00000,
-  0b11110,
-  0b00001,
-  0b00001,
-  0b00001,
-  0b00001,
-  0b11110,
-  0b00000,
+  // T
+  0b11111,
+  0b11111,
+  0b01110,
+  0b01110,
+  0b01110,
+  0b01110,
+  0b01110,
+  0b01110,
+
+  // H
+  0b11011,
+  0b11011,
+  0b11011,
+  0b11111,
+  0b11111,
+  0b11011,
+  0b11011,
+  0b11011,
+
+  // A
+  0b01110,
+  0b11111,
+  0b11011,
+  0b11111,
+  0b11111,
+  0b11011,
+  0b11011,
+  0b11011,
 };
 
 
 /*--------------------------------------------------------------------------*/
-// Setup
+// FUNCTIONS
 /*--------------------------------------------------------------------------*/
-void setup()
+
+/*--------------------------------------------------------------------------*/
+// Return status of LCD (true=enabled, false=not enabled)
+/*--------------------------------------------------------------------------*/
+bool IsLCDEnabled(void)
 {
-  Serial.begin(9600);
-  Wire.begin(); // I2C Master
-
-  LCDInit ();
-
-  for (int idx=0; idx<3; idx++)
-  {
-    LCDSetBacklightOn();
-    delay(100);
-    LCDSetBacklightOff();
-    delay(100);
-  }
-  LCDSetBacklightOn();
-
-  // Wait for Busy Flag test:
-
-  LCDWriteDataStringXY(0,0,"Hello");
-  Serial.println ("Clear");
-  LCDWriteInstructionByte(LCD_CLEAR_DISPLAY);
-  LCDWaitForBusyFlag();
-  Serial.println("Done");
-
-  // Load custom font data.
-
-  LCDClear ();
-  LCDWriteDataString (" Programming chars:");
-
-  //LCDSetCGRAMAddress (0);
-  //LCDWriteDataCGRAM (&data[0], sizeof(data));
-
-  LCDWriteDataStringXY (6, 1, "01234567");
-  LCDSetXY (6,2);
-  LCDWriteData ("\0\1\2\3\4\5\6\7\8", 8);
-
-  // Load all custom characters:
-
-  // delay (2000);
-  // LCDSetCGRAMAddress (0);
-  // LCDWriteDataCGRAM (&data[0], sizeof(data));
-
-  // Load custom characters one at a time:
-
-  for (int ch=0; ch<8; ch++)
-  {
-    LCDWriteDataCGRAMCharacter (ch, &pacmanGGRAMData[8*ch], 8);
-    delay(1000);
-  }
-
-  // Read back character RAM and compare to what we sent:
-
-  Serial.print ("DATA : ");
-  for (int idx=0; idx<sizeof(pacmanGGRAMData); idx++)
-  {
-    Serial.print (pacmanGGRAMData[idx], HEX);
-    Serial.print (" ");
-  }
-  Serial.println();
-
-  Serial.print ("CGRAM: ");
-  uint8_t CGRAMBuffer[sizeof(pacmanGGRAMData)];
-  LCDReadDataCGRAM (CGRAMBuffer, sizeof(CGRAMBuffer));
-  for (int idx=0; idx<sizeof(CGRAMBuffer); idx++)
-  {
-    Serial.print (CGRAMBuffer[idx], HEX);
-    Serial.print (" ");
-  }
-  Serial.println();
-
-  delay (2000);
-
-  // Read Data from Cursor Position Test:
-
-  LCDClear ();
-  LCDWriteDataByte (255);
-  LCDWriteData ("ABCDEFGH", 8);
-  for (int idx=0; idx<20; idx++)
-  {
-    //LCDSetDDRAMAddress (idx);
-    LCDSetXY (idx, 0);
-    uint8_t data = LCDReadDataByte();
-
-    //LCDSetDDRAMAddress (64+idx);
-    LCDSetXY (idx, 2);
-    LCDWriteDataByte (data);
-  }
-  delay (2000);
-
-  // Read Display RAM test:
-
-  LCDClear ();
-  LCDWriteDataStringXY (0,0, "12345678901234567890");
-  LCDWriteDataStringXY (0,1, "ABCDEFGHIJKLMNOPQRST");
-  LCDWriteDataStringXY (0,2, "abcdefghjiklmnopqrst");
-  LCDWriteDataStringXY (0,3, "09876543210987654321");
-
-  char buffer[80];
-  LCDReadDataDDRAM (0, buffer, sizeof(buffer));
-  for (int line=0; line<2; line++)
-  {
-    Serial.print ("Line ");
-    Serial.print (line);
-    Serial.print (": [ ");
-    
-    for (int pos=(line*20); pos<(line*20)+20; pos++)
-    {
-      Serial.print(buffer[pos]);
-    }
-    Serial.println (" ]");
-  }
-
-  delay (4000);
-
-  // Backlight test:
-
-  LCDClear ();
-  LCDWriteDataString ("Backlight Test:");
-  for (int idx=0; idx<2; idx++)
-  {
-    LCDSetBacklight(false);
-    delay(250);
-    LCDSetBacklight(true);
-    delay(250);
-  }
-  delay(1000);
-
-  // Cursor test:
-
-  LCDClear();
-  for (int idx=0; idx<2; idx++)
-  {
-    LCDWriteDataStringXY (0, 0, "Cursor On :");
-    LCDSetCursor(true);
-    delay(1000);
-    LCDWriteDataStringXY (0, 0, "Cursor Off:");
-    LCDSetCursor(false);
-    delay(1000);
-  }
-
-  LCDClear ();
-  for (int idx=0; idx<2; idx++)
-  {
-    LCDWriteDataStringXY (0, 0, "Blinking On :");
-    LCDSetCursorBlink(true);
-    delay(1000);
-    LCDWriteDataStringXY (0, 0, "Blinking Off:");
-    LCDSetCursorBlink(false);
-    delay(1000);
-  }
-
-  // You can also have Cursor On and Blink On, and you will see the cursor
-  // when the blinking square is off.
-
-  LCDClear();
-  LCDWriteDataStringXY (0, 0, "Display On/Off:");
-  for (int idx=0; idx<5; idx++)
-  {
-    LCDSetDisplay(false);
-    delay(1000);
-    LCDSetDisplay(true);
-    delay(1000);
-  }
-
-  // Term test
-
-//   LCDWriteDataString ("Term");
-//   delay (1000);
-//   LCDTerm ();
-//   delay(4000);
-//   LCDInit ();
+    return S_IsLCDEnabled;
 }
 
 
 /*--------------------------------------------------------------------------*/
-// Loop
+// Initialize the LCD2004.
 /*--------------------------------------------------------------------------*/
-void loop()
+//    4-Bit data mode
+//    2 Line display
+//    Display On
+//    Display Clear
+//    Left-to-Right display mode.
+bool LCDInit(void)
 {
-  /*------------------------------------------------------------------------*/
-  // Full character set
-  /*------------------------------------------------------------------------*/
-  LCDClear();
+    // Set all PCF8547 I/O pins LOW.
+#if defined(PCF8574_ADDRESS)
+    int ack = 0;
 
-  int ch = 0;
-  int col = 0;
-  while (ch < 256)
-  {
-    for (int row=0; row<4; row++)
+    Wire.begin();
+
+    Wire.beginTransmission(PCF8574_ADDRESS);
+    Wire.write(0x0);
+    ack = Wire.endTransmission();
+
+    if (ack != 0)
     {
-      LCDSetXY (0, row);
-      LCDWriteDataByte (getHexDigit (ch >> 4));
-      LCDWriteDataByte (getHexDigit (ch & 0xf));
-      LCDWriteDataString (": ");
-      for (int col=0; col<16; col++)
-      {
-        LCDWriteDataByte (ch);
-        ch++;
-      }
+        return false;
     }
-    delay(2000);
-  }
+#else // GPIO
+    pinMode (PIN_RS, OUTPUT);
+    pinMode (PIN_E, OUTPUT);
+    pinMode (PIN_D4, OUTPUT);
+    pinMode (PIN_D5, OUTPUT);
+    pinMode (PIN_D6, OUTPUT);
+    pinMode (PIN_D7, OUTPUT);
 
-  /*------------------------------------------------------------------------*/
-  // 8 Programmable Characters
-  /*------------------------------------------------------------------------*/
-  LCDClear ();
-  LCDWriteDataStringXY (0, 0, "8 Programmable Chars");
+    digitalWrite (PIN_RS, LOW);
+    digitalWrite (PIN_E, LOW);
+    digitalWrite (PIN_D4, LOW);
+    digitalWrite (PIN_D5, LOW);
+    digitalWrite (PIN_D6, LOW);
+    digitalWrite (PIN_D7, LOW);
+#endif
 
-  LCDWriteDataStringXY (1, 2, "0:");
-  LCDWriteDataByte (0);
-  LCDWriteDataStringXY (6, 2, "1:\1  2:\2  3:\3");
+    delayMicroseconds(50000);
 
-  LCDWriteDataStringXY (1, 3, "4:\4  5:\5  6:\6  7:\7");
+    // We have an LCD.
+    S_IsLCDEnabled = true;
 
-  LCDSetCGRAMAddress (0);
-  LCDWriteDataCGRAM (&pacmanGGRAMData[0], sizeof(pacmanGGRAMData));
+    // [7  6  5  4  3  2  1  0 ]
+    // [D7 D6 D5 D4 BL -E RW RS]
+    LCDWriteInstructionNibble(0b0011);
+    delay(5); // min 4.1 ms
 
-  delay (4000);
+    LCDWriteInstructionNibble(0b0011);
+    delayMicroseconds(110); // min 100 us
 
-  /*------------------------------------------------------------------------*/
-  // Pac-Man Demo
-  /*------------------------------------------------------------------------*/
-  LCDWriteDataStringXY (0, 1, "\5\6\6\6\6\6\6\6\6\6\6\6\6\6\6\6\6\6\6\7");
-  LCDWriteDataStringXY (0, 2, "\4\4\4\4\4\4\4\4\4\4\4\4\4\4\4\4\4\4\4\4");
-  LCDWriteDataStringXY (0, 3, "\5\6\6\6\6\6\6\6\6\6\6\6\6\6\6\6\6\6\6\7");
+    LCDWriteInstructionNibble(0b0011);
+    delayMicroseconds(110); // min 100 us
 
-  delay (2000);
+    // Set interface to 4-bit mode.
+    LCDWriteInstructionNibble(0b0010);
 
-  for (int x=0; x<24; x++)
-  {
-    if (x < 20)
-    {
-      LCDSetXY (x , 2);
-      LCDWriteDataByte (x & 1);
-    }
+    // Now we can use the 8-bit as two 4-bit write functions:
 
-    if (x > 4)
-    {
-      LCDSetXY (x-4, 2);
-      LCDWriteDataByte (2 + (x & 1));
-    }
+    // Function Set
+    // [ 0  0  1  DL N  F  0  0 ]
+    // DL: 1=8-Bit, 0=4-Bit
+    //  N: 1=2 Line, 0=1 Line
+    //  F: 1=5x10, 0=5x8
+    //                     (--001DNF00)
+    //LCDWriteInstructionByte(0b00101000);
+    LCDFunctionSet (N_BIT); // 2-Lines
 
-    delay(250);
-    
-    if (x < 20)
-    {
-      LCDSetXY (x, 2);
-      LCDWriteDataByte (32);
-    }
+    // Entry Mode Set
+    // [ 0  0  0  0  0  1  ID S ]
+    // ID: 1=Increment, 0=Decrement
+    //  S: 1=Shift based on ID (1=Left, 0=Right)
+    //                     (--000001IS)
+    //LCDWriteInstructionByte(0b00000110);
+    LCDEntryModeSet (ID_BIT); // Increment
 
-    if (x > 4)
-    {
-      LCDSetXY (x-4, 2);
-      LCDWriteDataByte (32);
-    }
-  }
+    // Default settings:
 
-  delay(4000);
+    LCDClear ();
+    LCDSetDisplay (true);
+    LCDSetBacklight (true);
 
-  /*------------------------------------------------------------------------*/
-  // Screen Saver
-  /*------------------------------------------------------------------------*/
-  LCDClear ();
-
-  LCDSetCGRAMAddress (0);
-  LCDWriteDataCGRAM (&defaultCGRAMData[0], sizeof(defaultCGRAMData));
-
-  int x = 0;
-  int y = 0;
-  int xm = 1;
-  int ym = 1;
-
-  for (int idx=0; idx<20; idx++)
-  {
-    LCDSetXY (x, y);
-    // Text:
-    //LCDWriteDataString (x, y, "Sub-Etha!");
-    // Custom characters:
+    // Load 8 custom characters and display Splash Screen.
+    LCDSetCGRAMAddress (0);
+    LCDWriteDataCGRAM (defaultCGRAMData, sizeof(defaultCGRAMData));
+    LCDSetXY (6, 1);
     LCDWriteData ("\0\1\2\3\4\5\6\7", 8);
-    delay(250);
-    LCDWriteDataStringXY (x, y, "         ");
+    LCDWriteDataStringXY (6, 2, "Software");
+    delay (2000);
 
-    x = x + xm;
-    if ((x < 1) || (x >= LCD_WIDTH-8-1))
-    {
-      xm = -xm;
-    }
-
-    y = y + ym;
-    if ((y < 1) || (y >= LCD_HEIGHT-1))
-    {
-      ym = -ym;
-    }
-  }
-
-  //delay(3000);
+    return true;
 }
 
 
-// Utility function.
-char getHexDigit(uint8_t nibble)
+/*--------------------------------------------------------------------------*/
+// Disable LCD screen.
+/*--------------------------------------------------------------------------*/
+void LCDTerm(void)
 {
-  char hexChar;
+    if (S_IsLCDEnabled == true)
+    {
+        LCDClear ();
+        LCDSetBacklight (false);
 
-  nibble = (nibble & 0x0f);
+        // Disable all I/O pins.
+#if defined(PCF8574_ADDRESS)
+        Wire.beginTransmission (PCF8574_ADDRESS);
+        Wire.write (0);
+        Wire.endTransmission ();
+#else // GPIO
+        digitalWrite (PIN_RS, LOW);
+        digitalWrite (PIN_E, LOW);
+        digitalWrite (PIN_D4, LOW);
+        digitalWrite (PIN_D5, LOW);
+        digitalWrite (PIN_D6, LOW);
+        digitalWrite (PIN_D7, LOW);
+#endif
 
-  if (nibble <= 9)
-  {
-    hexChar = '0';
-  }
-  else
-  {
-    hexChar = 'A'-10;
-  }
-
-  return (hexChar + nibble);
+        S_IsLCDEnabled = false;
+    }
 }
+
+
+/*--------------------------------------------------------------------------*/
+// Write out a 4-bit value.
+/*--------------------------------------------------------------------------*/
+// [7  6  5  4  3  2  1  0 ]
+// [D7 D6 D5 D4 BL -E RW RS]
+void LCDWriteInstructionNibble(uint8_t nibble)
+{
+#if defined(PCF8574_ADDRESS)
+    uint8_t dataByte = S_BacklightBit | (nibble << 4);
+
+    Wire.beginTransmission(PCF8574_ADDRESS);
+
+    Wire.write(E_BIT | dataByte);
+#else // GPIO
+    digitalWrite (PIN_D7, nibble & BIT(4));
+    digitalWrite (PIN_D6, nibble & BIT(3));
+    digitalWrite (PIN_D5, nibble & BIT(2));
+    digitalWrite (PIN_D4, nibble & BIT(1));
+    digitalWrite (PIN_E, HIGH);
+#endif
+    delayMicroseconds(1);
+
+#if defined(PCF8574_ADDRESS)
+    Wire.write(dataByte);
+#else // GPIO
+    digitalWrite (PIN_E, LOW);
+#endif
+    delayMicroseconds(1);
+
+#if defined(PCF8574_ADDRESS)
+    Wire.endTransmission();
+#endif
+
+    delayMicroseconds(37);
+}
+
+
+/*--------------------------------------------------------------------------*/
+// Write a byte out, 4-bits at a time. The rsBit will determine
+// if it is an Instruction (rsBit=0) or Data byte (rsBit=1).
+/*--------------------------------------------------------------------------*/
+// [7  6  5  4  3  2  1  0 ]
+// [D7 D6 D5 D4 BL -E RW RS]
+void LCDWriteByte(uint8_t rsBit, uint8_t dataByte)
+{
+#if defined(PCF8574_ADDRESS)
+    uint8_t newByte;
+
+    Wire.beginTransmission(PCF8574_ADDRESS);
+
+    newByte = S_BacklightBit | rsBit | (dataByte & 0xf0);
+    Wire.write(E_BIT | newByte);
+#else // GPIO
+    digitalWrite (PIN_RS, rsBit & RS_BIT);
+    digitalWrite (PIN_D7, dataByte & BIT(7));
+    digitalWrite (PIN_D6, dataByte & BIT(6));
+    digitalWrite (PIN_D5, dataByte & BIT(5));
+    digitalWrite (PIN_D4, dataByte & BIT(4));
+    digitalWrite (PIN_E, HIGH);
+#endif    
+    delayMicroseconds(1);
+
+#if defined(PCF8574_ADDRESS)
+    Wire.write(newByte);
+#else // GPIO
+    digitalWrite (PIN_E, LOW);
+#endif
+
+    delayMicroseconds(37);
+
+#if defined(PCF8574_ADDRESS)
+    newByte = S_BacklightBit | rsBit | (dataByte << 4);
+    Wire.write(E_BIT | newByte);
+#else // GPIO
+    digitalWrite (PIN_D7, dataByte & BIT(3));
+    digitalWrite (PIN_D6, dataByte & BIT(2));
+    digitalWrite (PIN_D5, dataByte & BIT(1));
+    digitalWrite (PIN_D4, dataByte & BIT(0));
+    digitalWrite (PIN_E, HIGH);
+#endif
+    delayMicroseconds(1);
+
+#if defined(PCF8574_ADDRESS)
+    Wire.write(newByte);
+#else // GPIO
+    digitalWrite (PIN_E, LOW);
+#endif    
+    delayMicroseconds(37);
+
+    Wire.endTransmission();
+}
+
+
+/*--------------------------------------------------------------------------*/
+// Write with RS bit 0.
+/*--------------------------------------------------------------------------*/
+void LCDWriteInstructionByte(uint8_t instruction)
+{
+    LCDWriteByte(0, instruction);
+}
+
+
+/*--------------------------------------------------------------------------*/
+// Write with RS bit 1.
+/*--------------------------------------------------------------------------*/
+void LCDWriteDataByte(uint8_t data)
+{
+    LCDWriteByte(RS_BIT, data);
+    delayMicroseconds(53);
+}
+
+
+/*--------------------------------------------------------------------------*/
+// Write out one or more data bytes.
+/*--------------------------------------------------------------------------*/
+void LCDWriteData(uint8_t *dataPtr, uint8_t dataSize)
+{
+    for (int idx = 0; idx < dataSize; idx++)
+    {
+        LCDWriteDataByte(dataPtr[idx]);
+    }
+}
+
+
+/*--------------------------------------------------------------------------*/
+// Write out a NIL terminated C string.
+/*--------------------------------------------------------------------------*/
+void LCDWriteDataString(char *message)
+{
+    LCDWriteData((uint8_t *)message, strlen(message));
+}
+
+/*--------------------------------------------------------------------------*/
+// Write out a NIL terminated C string.
+/*--------------------------------------------------------------------------*/
+void LCDWriteDataStringXY(uint8_t x, uint8_t y, char *message)
+{
+    LCDSetXY(x, y);
+    LCDWriteDataString(message);
+}
+
+
+/*--------------------------------------------------------------------------*/
+// Character Generator RAM
+/*--------------------------------------------------------------------------*/
+void LCDWriteDataCGRAM (uint8_t *dataPtr, uint8_t dataSize)
+{
+    if ((dataPtr != NULL) && (dataSize != 0))
+    {
+        if (dataSize > 64)
+        {
+            dataSize = 64;
+        }
+
+        LCDWriteData (dataPtr, dataSize);
+    }
+}
+
+
+/*--------------------------------------------------------------------------*/
+// Character Generator RAM
+/*--------------------------------------------------------------------------*/
+void LCDWriteDataCGRAMCharacter (uint8_t characterNumber, uint8_t *dataPtr, uint8_t dataSize)
+{
+    if (characterNumber > 7)
+    {
+        characterNumber = 7;
+    }
+
+    LCDSetCGRAMAddress (characterNumber * 8);
+    LCDWriteDataCGRAM (dataPtr, dataSize);
+}
+
+
+/*--------------------------------------------------------------------------*/
+// Set LCD cursor position.
+/*--------------------------------------------------------------------------*/
+// LCD2004 is internally treated like a two line display of 64 characters
+// each. The first internal line is bytes 0-63 and the second internal
+// line is bytes 64-127.
+//
+// For the physical LCD2004 20x4 four-line display, the first 20 bytes of
+// internal line 1 (0-19) is the display line 1. The second 20 bytes of
+// internal line 1 (20-39) is the display line 3. The first 20 bytes
+// of internal line 2 (64-83) is display line 2. The second 20 bytes
+// of internal line 2 (84-103) is display line 4.
+//
+// Super easy and not confusing at all.
+//
+//                          +--------------------+
+// Internal Line 1 (0-19)   |aaaaaaaaaaaaaaaaaaaa| Display line 1
+// Internal Line 2 (64-83)  |bbbbbbbbbbbbbbbbbbbb| Display line 2
+// Internal Line 1 (20-39)  |aaaaaaaaaaaaaaaaaaaa| Display line 3
+// Internal Line 2 (84-103) |bbbbbbbbbbbbbbbbbbbb| Display line 4
+//                          +--------------------+
+//
+// Because of this, we will use a simple translation to get between
+// column (x) and row (y) to the actual offset of these two internal
+// 64-byte lines.
+//
+void LCDSetXY(uint8_t x, uint8_t y)
+{
+    uint8_t offset = 0;
+
+    if (y == 1)
+    {
+        offset = 64; // 0x40
+    }
+    else if (y == 2)
+    {
+        offset = 20; // 0x14
+    }
+    else if (y == 3)
+    {
+        offset = 84; // 0x54
+    }
+    else
+    {
+        // Offset will be 0.
+    }
+
+    offset = offset + x;
+
+    LCDSetDDRAMAddress(offset);
+}
+
+
+// WRITE INSTRUCTIONS/COMMANDS
+
+/*--------------------------------------------------------------------------*/
+// Clear the LCD (and home the cursor position).
+/*--------------------------------------------------------------------------*/
+void LCDClear(void)
+{
+    // Avoid sending I2C data if no LCD is enabled.
+    //if (S_IsLCDEnabled == true)
+    {
+        // Clear Display
+        // [ 0  0  0  0  0  0  0  1 ]
+        LCDWriteInstructionByte(LCD_CLEAR_DISPLAY);        
+        delay(3); // 1.18ms - 2.16ms
+        //LCDWaitForBusyFlag ();
+    }
+}
+
+
+/*--------------------------------------------------------------------------*/
+// Home the cursor.
+/*--------------------------------------------------------------------------*/
+void LCDHome(void)
+{
+    // Avoid sending I2C data if no LCD is enabled.
+    //if (S_IsLCDEnabled == true)
+    {
+        // Return Home
+        // [ 0  0  0  0  0  0  1  0 ]
+        LCDWriteInstructionByte(LCD_RETURN_HOME);        
+        delay(3); // 1.18ms - 2.16ms
+        //LCDWaitForBusyFlag ();
+    }
+}
+
+
+/*--------------------------------------------------------------------------*/
+//
+/*--------------------------------------------------------------------------*/
+void LCDEntryModeSet (uint8_t entryModeBits)
+{
+    entryModeBits = (entryModeBits & LCD_ENTRY_MODE_SET_MASK);
+
+    // Entry Mode Set
+    // [ 0  0  0  0  0  1  ID S ]
+    // ID: 1=Increment, 0=Decrement
+    //  S: 1=Shift based on ID (1=Left, 0=Right)
+    LCDWriteInstructionByte (LCD_ENTRY_MODE_SET | entryModeBits);
+
+    delayMicroseconds (53);
+}
+
+
+/*--------------------------------------------------------------------------*/
+//
+/*--------------------------------------------------------------------------*/
+void LCDDisplayOnOffControl (uint8_t displayControlBits)
+{
+    displayControlBits = (displayControlBits & LCD_DISPLAY_CONTROL_MASK);
+
+    // Display On/Off Control
+    // [ 0  0  0  0  1  D  C  B ]
+    // D: Display
+    // C: Cursor
+    // B: Blink
+    LCDWriteInstructionByte (LCD_DISPLAY_CONTROL | displayControlBits);
+
+    delayMicroseconds (53);
+
+    // Remember last bits that were set.
+    S_DisplayControlBits = displayControlBits;
+}
+
+
+/*--------------------------------------------------------------------------*/
+//
+/*--------------------------------------------------------------------------*/
+void LCDCursorOrDisplayShift (uint8_t cursorOrDisplayShiftBits)
+{
+    cursorOrDisplayShiftBits = (cursorOrDisplayShiftBits & LCD_SHIFT_MASK);
+
+    // Cursor or Display Shift
+    // [ 0  0  0  0  SC RL -  - ]
+    // SC:
+    // RL:
+    LCDWriteInstructionByte (LCD_SHIFT | cursorOrDisplayShiftBits);
+
+    delayMicroseconds (53);
+}
+
+
+/*--------------------------------------------------------------------------*/
+//
+/*--------------------------------------------------------------------------*/
+void LCDFunctionSet (uint8_t functionSetBits)
+{
+    functionSetBits = (functionSetBits & LCD_FUNCTION_SET_MASK);
+
+    // Function Set
+    // [ 0  0  1  DL N  F  0  0 ]
+    // DL: 1=8-Bit, 0=4-Bit
+    //  N: 1=2 Line, 0=1 Line
+    //  F: 1=5x10, 0=5x8
+    LCDWriteInstructionByte (LCD_FUNCTION_SET | functionSetBits);
+
+    delayMicroseconds (53);
+}
+
+
+/*--------------------------------------------------------------------------*/
+//
+/*--------------------------------------------------------------------------*/
+void LCDSetCGRAMAddress (uint8_t CGRAMAddress)
+{
+    CGRAMAddress = (CGRAMAddress & LCD_CGRAM_ADDR_MASK);
+
+    // Set CGRAM Address (0-63, first 8 5x8 characters)
+    // [ 0  1  AC5 AC4 AC3 AC2 AC1 AC0 ]
+    // ACx: CGRAM Address Counter
+    LCDWriteInstructionByte (LCD_SET_CGRAM_ADDR | CGRAMAddress);
+
+    delayMicroseconds(53);
+}
+
+
+/*--------------------------------------------------------------------------*/
+//
+/*--------------------------------------------------------------------------*/
+void LCDSetDDRAMAddress (uint8_t DDRAMAddress)
+{
+    DDRAMAddress = (DDRAMAddress & LCD_DDRAM_ADDR_MASK);
+
+    // Set CGRAM Address (0-127, screen memory)
+    // [ 1 AC6 AC5 AC4 AC3 AC2 AC1 AC0 ]
+    // ACx: DDRAM Address Counter
+    LCDWriteInstructionByte (LCD_SET_DDRAM_ADDR | DDRAMAddress); 
+   
+    delayMicroseconds(53);
+}
+
+// READ
+
+/*--------------------------------------------------------------------------*/
+// Read a byte, 4-bits at a time.
+/*--------------------------------------------------------------------------*/
+uint8_t LCDReadByte(LCDBitEnum rsBit)
+{
+#if defined(PCF8574_ADDRESS)
+    uint8_t newByte = 0;
+
+    // CGRAM/DDRAM DATA READ:
+
+    // Enable, Register Select (Data), Read/Write (Read), Enable I/O Pins
+    Wire.beginTransmission(PCF8574_ADDRESS);
+    Wire.write(E_BIT | S_BacklightBit | rsBit | RW_BIT | DB7_BIT | DB6_BIT | DB5_BIT | DB4_BIT);
+    Wire.endTransmission();
+    digitalWrite (E_BIT, HIGH);
+
+    delayMicroseconds (1);
+
+    // Read one byte.
+    Wire.requestFrom (PCF8574_ADDRESS, 1);
+    //  Store high four bits as high nibble of newBytes. (xxx----)
+    newByte = (Wire.read() & 0xf0);
+
+    // Disable, but leave Backlight on.
+    Wire.beginTransmission(PCF8574_ADDRESS);
+    Wire.write(S_BacklightBit);
+    Wire.endTransmission();
+    delayMicroseconds (1);
+
+    // Enable, Register Select (Data), Read/Write (Read), Enable I/O Pins
+    Wire.beginTransmission(PCF8574_ADDRESS);
+    Wire.write(E_BIT | S_BacklightBit | rsBit | RW_BIT | DB7_BIT | DB6_BIT | DB5_BIT | DB4_BIT);
+    Wire.endTransmission();
+    delayMicroseconds (1);
+
+    // Read one byte.
+    Wire.requestFrom (PCF8574_ADDRESS, 1);
+    // Store high four bits as low nibble of newByte. (----xxxx)
+    newByte = newByte | (Wire.read() >> 4);
+
+    // Disable, but leave Backlight on.
+    Wire.beginTransmission(PCF8574_ADDRESS);
+    Wire.write(S_BacklightBit);
+    Wire.endTransmission();
+
+    delayMicroseconds (53);
+
+    return newByte;
+#else
+  return 0;
+#endif    
+}
+
+
+/*--------------------------------------------------------------------------*/
+// 
+/*--------------------------------------------------------------------------*/
+uint8_t LCDReadDataByte (void)
+{
+    return LCDReadByte(RS_BIT);
+}
+
+
+/*--------------------------------------------------------------------------*/
+// 
+/*--------------------------------------------------------------------------*/
+void LCDReadData (uint8_t *bufferPtr, uint8_t bufferSize)
+{
+    for (int idx = 0; idx < bufferSize; idx++)
+    {
+        bufferPtr[idx] = LCDReadDataByte();
+    }
+}
+
+
+/*--------------------------------------------------------------------------*/
+// 
+/*--------------------------------------------------------------------------*/
+void LCDReadDataDDRAM (uint8_t DDRAMAddress, uint8_t *bufferPtr, uint8_t bufferSize)
+{
+    if ((bufferPtr != NULL) && (bufferSize != 0))
+    {
+        if (bufferSize > 128)
+        {
+            bufferSize = 128;
+        }
+
+        LCDSetDDRAMAddress (DDRAMAddress);
+        LCDReadData (bufferPtr, bufferSize);
+    }
+}
+
+
+/*--------------------------------------------------------------------------*/
+// 
+/*--------------------------------------------------------------------------*/
+void LCDReadDataCGRAM (uint8_t *bufferPtr, uint8_t bufferSize)
+{
+    if ((bufferPtr != NULL) && (bufferSize != 0))
+    {
+        if (bufferSize > 64)
+        {
+            bufferSize = 64;
+        }
+
+        LCDSetCGRAMAddress (0);
+        LCDReadData (bufferPtr, bufferSize);
+    }
+}
+
+
+/*--------------------------------------------------------------------------*/
+// 
+/*--------------------------------------------------------------------------*/
+void LCDReadDataCGRAMCharacter (uint8_t characterNumber, uint8_t *bufferPtr, uint8_t bufferSize)
+{
+
+}
+
+
+
+/*--------------------------------------------------------------------------*/
+// 
+/*--------------------------------------------------------------------------*/
+uint8_t LCDReadBusyFlagAndAddressCounter (void)
+{
+    return LCDReadByte(0);
+}
+
+uint8_t LCDReadAddressCounter (void)
+{
+    return (LCDReadByte(0) & LCD_DDRAM_ADDR_MASK);
+}
+
+
+/*--------------------------------------------------------------------------*/
+//
+// This one is simpler since our BF bit is in the high nibble so we do not
+// need to do two reads to retrieve the full 8-bits.
+/*--------------------------------------------------------------------------*/
+void LCDWaitForBusyFlag(void)
+{
+#if defined(PCF8574_ADDRESS)
+    Wire.beginTransmission(PCF8574_ADDRESS);
+    Wire.write(S_BacklightBit | RW_BIT | DB7_BIT | DB6_BIT | DB5_BIT | DB4_BIT);
+    Wire.endTransmission();
+    delayMicroseconds(1);
+
+    // Enable, Read, Backlight On, Pins as Input
+    Wire.beginTransmission(PCF8574_ADDRESS);
+    Wire.write(E_BIT | S_BacklightBit | RW_BIT | DB7_BIT | DB6_BIT | DB5_BIT | DB4_BIT);
+    Wire.endTransmission();
+    delayMicroseconds(1);
+
+    // TODO: Timeout to avoid a deadlock due to I2C issues.
+    uint16_t timeout = 65535;
+    while (timeout-- != 0)
+    {
+        // Read I/O pins.
+        Wire.requestFrom(PCF8574_ADDRESS, 1);
+        if ((Wire.read() & DB7_BIT) == 0)
+        {
+            break;
+        }
+    };
+
+    // Disable, leaving Backlight on.
+    Wire.beginTransmission(PCF8574_ADDRESS);
+    Wire.write(S_BacklightBit);
+    Wire.endTransmission();
+#else // GPIO
+    // TODO: Poll for ... D7?
+#endif    
+}
+
+/*--------------------------------------------------------------------------*/
+// Clear the LCD (and home the cursor position).
+/*--------------------------------------------------------------------------*/
+void LCDSetDisplay(bool displayOn)
+{
+    if (displayOn == true)
+    {
+        S_DisplayControlBits |= D_BIT;
+    }
+    else
+    {
+        S_DisplayControlBits &= ~D_BIT;
+    }
+
+    LCDDisplayOnOffControl (S_DisplayControlBits);
+}
+
+void LCDDisplayOn(void)
+{
+    LCDSetDisplay(true);
+}
+
+void LCDDisplayOff(void)
+{
+    LCDSetDisplay(false);
+}
+
+
+/*--------------------------------------------------------------------------*/
+// Clear the LCD (and home the cursor position).
+/*--------------------------------------------------------------------------*/
+void LCDSetCursor(bool cursorOn)
+{
+    if (cursorOn == true)
+    {
+        S_DisplayControlBits |= C_BIT;
+    }
+    else
+    {
+        S_DisplayControlBits &= ~C_BIT;
+    }
+
+    LCDDisplayOnOffControl (S_DisplayControlBits);
+}
+
+void LCDCursorOn(void)
+{
+    LCDSetCursor(true);
+}
+
+void LCDCursorOff(void)
+{
+    LCDSetCursor(false);
+}
+
+
+/*--------------------------------------------------------------------------*/
+// Clear the LCD (and home the cursor position).
+/*--------------------------------------------------------------------------*/
+void LCDSetCursorBlink(bool cursorBlinkOn)
+{
+    if (cursorBlinkOn == true)
+    {
+        S_DisplayControlBits |= B_BIT;
+    }
+    else
+    {
+        S_DisplayControlBits &= ~B_BIT;
+    }
+
+    LCDDisplayOnOffControl (S_DisplayControlBits);
+}
+
+void LCDCursorBlinkOn(void)
+{
+    LCDSetCursorBlink(true);
+}
+
+void LCDCursorBlinkOff(void)
+{
+    LCDSetCursorBlink(false);
+}
+
+
+/*--------------------------------------------------------------------------*/
+// Set the backlight on or off.
+/*--------------------------------------------------------------------------*/
+void LCDSetBacklight(bool backlightOn)
+{
+    if (backlightOn == true)
+    {
+        S_BacklightBit |= BL_BIT;
+    }
+    else
+    {
+        S_BacklightBit &= ~BL_BIT;
+    }
+
+    // Manually set backlight bit.
+#if defined(PCF8574_ADDRESS) 
+    Wire.beginTransmission(PCF8574_ADDRESS);
+    Wire.write(S_BacklightBit);
+    Wire.endTransmission();
+#else // GPIO
+    // TODO: If backlight is wired to an I/O pin.
+#endif    
+}
+
+void LCDSetBacklightOn(void)
+{
+    LCDSetBacklight(true);
+}
+
+void LCDSetBacklightOff(void)
+{
+    LCDSetBacklight(false);
+}
+
+#endif /* LCD2004_PCF8547_C */
 
 /*---------------------------------------------------------------------------*/
-// End of LCD2004PCF8547.ino
+// End of LCD2004_PCF8547.c
