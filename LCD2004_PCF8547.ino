@@ -935,4 +935,4 @@ void LCDSetBacklightOff(void)
 #endif /* LCD2004_PCF8547_C */
 
 /*---------------------------------------------------------------------------*/
-// End of LCD2004_PCF8547.c
+// End of LCD2004_PCF8547.ino
