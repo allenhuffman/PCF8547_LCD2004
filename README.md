@@ -1,6 +1,8 @@
 # PCF8547_LCD2004 (for Arduino)
 This version intends to have full support of all LCD2004/LCD1602 features, but still has some cleanup to do.
 
+2002-12-07 - Added initial support for GPIO mode. This was coded and tested at the online WOKWI.com Arduino simulator. The one I was using had a virtual LCD1602 display, so the output of this demo doesn't show up properly (two 2 of 16 characters, while my demo was written for 4 lines of 20 characters), but the write communication seems to work. The WOKWI simulated LCD1602 does not have the RW line wired up, or the Backlight, so those options do not work in the simulator and are not implemented in my code, for now. My project: https://wokwi.com/projects/350400522467934802
+
 Rest:
 
 I was writing code for a PIC24 processor using the CCS IDE, and used an Arduino to figure out how to talk to this LCD and I2C controller. I thought I'd share the Arduino code in case anyone else is needing to do the same thing.
