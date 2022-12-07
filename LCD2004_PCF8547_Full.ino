@@ -436,4 +436,4 @@ char getHexDigit(uint8_t nibble)
 }
 
 /*---------------------------------------------------------------------------*/
-// End of LCD2004PCF8547.ino
+// End of LCD2004_PCF8547_Full.ino
